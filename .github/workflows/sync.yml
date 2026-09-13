@@ -70,7 +70,7 @@ jobs:
           if [ "$STRATEGY" = "rebase" ]; then
             git rebase "upstream/${UPSTREAM_BRANCH}" && ok=1 || git rebase --abort
           else
-            git merge --no-ff -m "Merge ${UPSTREAM_REPO}@${UPSTREAM_BRANCH} into ${TARGET_BRANCH}" \
+            git merge --no-ff -m "Merge branch '${UPSTREAM_BRANCH}' into ${TARGET_BRANCH}" \
               "upstream/${UPSTREAM_BRANCH}" && ok=1 || true
           fi
 
