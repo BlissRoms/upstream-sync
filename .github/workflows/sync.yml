@@ -31,6 +31,10 @@ on:
         required: true
       BOT_EMAIL:
         required: true
+      TG_TOKEN:
+        required: true
+      TG_CHAT:
+        required: true
 
 jobs:
   sync:
@@ -89,3 +93,23 @@ jobs:
           echo "files=${files}" >> "$GITHUB_OUTPUT"
           echo "::error::Conflict in: ${files}"
           exit 1
+
+      - name: Notify on failure
+        if: failure()
+        env:
+          TG_TOKEN: ${{ secrets.TG_TOKEN }}
+          TG_CHAT: ${{ secrets.TG_CHAT }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ "${{ steps.merge.outputs.status }}" = "conflict" ]; then
+            msg="❌ CONFLICT ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
+          Files: ${{ steps.merge.outputs.files }}
+          ${RUN_URL}"
+          else
+            msg="❌ SYNC FAILED ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
+          ${RUN_URL}"
+          fi
+          curl -sf -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
+            -d chat_id="${TG_CHAT}" \
+            -d disable_web_page_preview=true \
+            --data-urlencode "text=${msg}"
