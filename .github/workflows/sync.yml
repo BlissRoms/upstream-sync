@@ -26,14 +26,11 @@ on:
         required: false
         type: string
         default: merge
-      bot_name:
-        required: false
-        type: string
-        default: bliss-bot
-      bot_email:
-        required: false
-        type: string
-        default: bot@blissroms.org
+    secrets:
+      BOT_NAME:
+        required: true
+      BOT_EMAIL:
+        required: true
 
 jobs:
   sync:
@@ -54,8 +51,8 @@ jobs:
           STRATEGY: ${{ inputs.merge_strategy }}
         run: |
           set -euo pipefail
-          git config user.name  "${{ inputs.bot_name }}"
-          git config user.email "${{ inputs.bot_email }}"
+          git config user.name  "${{ secrets.BOT_NAME }}"
+          git config user.email "${{ secrets.BOT_EMAIL }}"
           git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
           git fetch upstream "${UPSTREAM_BRANCH}"
 
