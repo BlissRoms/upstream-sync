@@ -2,7 +2,8 @@
 # Path: .github/workflows/sync.yml
 #
 # Reusable workflow. Called by every Bliss repo's
-# Org secrets required: TG_TOKEN, TG_CHAT
+# Org secrets required: BOT_NAME, BOT_EMAIL, TG_TOKEN, TG_CHAT
+# Caller permissions required: contents: write, pull-requests: write
 
 name: Upstream sync (reusable)
 
@@ -91,20 +92,64 @@ jobs:
           git merge --abort 2>/dev/null || true
           echo "status=conflict" >> "$GITHUB_OUTPUT"
           echo "files=${files}" >> "$GITHUB_OUTPUT"
-          echo "::error::Conflict in: ${files}"
-          exit 1
+          echo "::warning::Conflict in: ${files}"
 
-      - name: Notify on failure
-        if: failure()
+      - name: Open PR for conflicting sync
+        id: pr
+        if: steps.merge.outputs.status == 'conflict'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          UPSTREAM_REPO: ${{ inputs.upstream_repo }}
+          UPSTREAM_BRANCH: ${{ inputs.upstream_branch }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          FILES: ${{ steps.merge.outputs.files }}
+        run: |
+          set -euo pipefail
+          sync_branch="sync/${UPSTREAM_BRANCH}-into-${TARGET_BRANCH}"
+
+          # If a PR is already open someone may be resolving it on the
+          # sync branch, so leave that branch alone and just report it.
+          existing=$(gh pr list --base "${TARGET_BRANCH}" --head "${sync_branch}" \
+            --state open --json url --jq '.[0].url // empty')
+          if [ -n "${existing}" ]; then
+            echo "pr_url=${existing}" >> "$GITHUB_OUTPUT"
+            echo "PR already open: ${existing}"
+            exit 0
+          fi
+
+          git push --force origin "upstream/${UPSTREAM_BRANCH}:refs/heads/${sync_branch}"
+
+          file_list=$(printf '%s\n' ${FILES} | sed 's/^/- /')
+          body="Automatic sync of ${TARGET_BRANCH} from ${UPSTREAM_REPO}@${UPSTREAM_BRANCH} hit conflicts and needs a manual merge.
+
+          Conflicting files:
+          ${file_list}
+
+          To resolve: check out \`${sync_branch}\`, merge \`${TARGET_BRANCH}\` into it, fix the conflicts, push, then merge this PR."
+
+          url=$(gh pr create \
+            --base "${TARGET_BRANCH}" \
+            --head "${sync_branch}" \
+            --title "Sync ${TARGET_BRANCH} from ${UPSTREAM_REPO}@${UPSTREAM_BRANCH} (conflicts)" \
+            --body "${body}")
+          echo "pr_url=${url}" >> "$GITHUB_OUTPUT"
+          echo "Opened ${url}"
+
+      - name: Notify
+        if: failure() || steps.merge.outputs.status == 'conflict'
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_CHAT: ${{ secrets.TG_CHAT }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ "${{ steps.merge.outputs.status }}" = "conflict" ]; then
+          if [ "${{ steps.merge.outputs.status }}" = "conflict" ] && [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
+            msg="⚠️ CONFLICT ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
+          Files: ${{ steps.merge.outputs.files }}
+          PR: ${{ steps.pr.outputs.pr_url }}"
+          elif [ "${{ steps.merge.outputs.status }}" = "conflict" ]; then
             msg="❌ CONFLICT ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
           Files: ${{ steps.merge.outputs.files }}
-          ${RUN_URL}"
+          Could not open PR, see run: ${RUN_URL}"
           else
             msg="❌ SYNC FAILED ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
           ${RUN_URL}"
