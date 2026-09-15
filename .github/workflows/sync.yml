@@ -136,13 +136,17 @@ jobs:
           echo "Opened ${url}"
 
       - name: Notify
-        if: failure() || steps.merge.outputs.status == 'conflict'
+        if: failure() || steps.merge.outputs.status == 'conflict' || steps.merge.outputs.status == 'merged'
         env:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_BLISSROMS_MERGE_TRACKER_CHAT: ${{ secrets.TG_BLISSROMS_MERGE_TRACKER_CHAT }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
-          if [ "${{ steps.merge.outputs.status }}" = "conflict" ] && [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
+          if [ "${{ steps.merge.outputs.status }}" = "merged" ]; then
+            msg="✅ SYNCED ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
+          ${{ steps.merge.outputs.commits }} new commit(s) via ${{ inputs.merge_strategy }}
+          ${RUN_URL}"
+          elif [ "${{ steps.merge.outputs.status }}" = "conflict" ] && [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
             msg="⚠️ CONFLICT ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
           Files: ${{ steps.merge.outputs.files }}
           PR: ${{ steps.pr.outputs.pr_url }}"
