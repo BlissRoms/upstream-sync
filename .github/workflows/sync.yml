@@ -54,10 +54,12 @@ jobs:
           UPSTREAM_BRANCH: ${{ inputs.upstream_branch }}
           TARGET_BRANCH: ${{ inputs.target_branch }}
           STRATEGY: ${{ inputs.merge_strategy }}
+          BOT_NAME: ${{ secrets.BOT_NAME }}
+          BOT_EMAIL: ${{ secrets.BOT_EMAIL }}
         run: |
           set -euo pipefail
-          git config user.name  "${{ secrets.BOT_NAME }}"
-          git config user.email "${{ secrets.BOT_EMAIL }}"
+          git config user.name  "${BOT_NAME}"
+          git config user.email "${BOT_EMAIL}"
           git remote add upstream "https://github.com/${UPSTREAM_REPO}.git"
           git fetch upstream "${UPSTREAM_BRANCH}"
 
@@ -141,21 +143,31 @@ jobs:
           TG_TOKEN: ${{ secrets.TG_TOKEN }}
           TG_BLISSROMS_MERGE_TRACKER_CHAT: ${{ secrets.TG_BLISSROMS_MERGE_TRACKER_CHAT }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REPO: ${{ github.repository }}
+          TARGET_BRANCH: ${{ inputs.target_branch }}
+          UPSTREAM_REPO: ${{ inputs.upstream_repo }}
+          UPSTREAM_BRANCH: ${{ inputs.upstream_branch }}
+          STRATEGY: ${{ inputs.merge_strategy }}
+          STATUS: ${{ steps.merge.outputs.status }}
+          COMMITS: ${{ steps.merge.outputs.commits }}
+          FILES: ${{ steps.merge.outputs.files }}
+          PR_URL: ${{ steps.pr.outputs.pr_url }}
         run: |
-          if [ "${{ steps.merge.outputs.status }}" = "merged" ]; then
-            msg="✅ SYNCED ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
-          ${{ steps.merge.outputs.commits }} new commit(s) via ${{ inputs.merge_strategy }}
+          where="${REPO} (${TARGET_BRANCH} ← ${UPSTREAM_REPO}@${UPSTREAM_BRANCH})"
+          if [ "${STATUS}" = "merged" ]; then
+            msg="✅ SYNCED ${where}
+          ${COMMITS} new commit(s) via ${STRATEGY}
           ${RUN_URL}"
-          elif [ "${{ steps.merge.outputs.status }}" = "conflict" ] && [ -n "${{ steps.pr.outputs.pr_url }}" ]; then
-            msg="⚠️ CONFLICT ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
-          Files: ${{ steps.merge.outputs.files }}
-          PR: ${{ steps.pr.outputs.pr_url }}"
-          elif [ "${{ steps.merge.outputs.status }}" = "conflict" ]; then
-            msg="❌ CONFLICT ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
-          Files: ${{ steps.merge.outputs.files }}
+          elif [ "${STATUS}" = "conflict" ] && [ -n "${PR_URL}" ]; then
+            msg="⚠️ CONFLICT ${where}
+          Files: ${FILES}
+          PR: ${PR_URL}"
+          elif [ "${STATUS}" = "conflict" ]; then
+            msg="❌ CONFLICT ${where}
+          Files: ${FILES}
           Could not open PR, see run: ${RUN_URL}"
           else
-            msg="❌ SYNC FAILED ${{ github.repository }} (${{ inputs.target_branch }} ← ${{ inputs.upstream_repo }}@${{ inputs.upstream_branch }})
+            msg="❌ SYNC FAILED ${where}
           ${RUN_URL}"
           fi
           curl -sf -X POST "https://api.telegram.org/bot${TG_TOKEN}/sendMessage" \
